@@ -219,6 +219,15 @@ export function EmptyState({
   )
 }
 
+export function ListLabel({ title, shown, total }: { title: string; shown: number; total: number }) {
+  return (
+    <View style={styles.listLabel}>
+      <Text style={type.heading}>{title}</Text>
+      <Text style={type.caption}>{shown < total ? `Showing ${shown} of ${total}` : `${total} total`}</Text>
+    </View>
+  )
+}
+
 export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   const opacity = useRef(new Animated.Value(0.55)).current
   useEffect(() => {
@@ -450,7 +459,7 @@ export function Row({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.paper },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.sm, height: 56 },
-  headerSide: { width: 84, justifyContent: 'center' },
+  headerSide: { width: 108, justifyContent: 'center' },
   back: { width: hit, height: hit, alignItems: 'center', justifyContent: 'center' },
   headerRight: { alignItems: 'flex-end' },
   headerTitle: { flex: 1, textAlign: 'center', fontFamily: fonts.serif, fontSize: 18, color: colors.ink },
@@ -492,6 +501,7 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.barTint, alignItems: 'center', justifyContent: 'center', marginBottom: space.xs },
   emptyTitle: { fontFamily: fonts.sansSemi, fontSize: 16, color: colors.ink, textAlign: 'center' },
   emptyAction: { marginTop: space.md, alignSelf: 'center' },
+  listLabel: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   skeleton: { backgroundColor: colors.line, borderRadius: radius.sm },
   skeletonRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, marginBottom: space.sm },
   skeletonIcon: { width: 42, height: 42, borderRadius: radius.md },

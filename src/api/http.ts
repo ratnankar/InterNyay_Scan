@@ -48,7 +48,7 @@ function fallbackMessage(status: number): string {
 }
 
 export async function handleSession(status: number, hadToken: boolean, path: string) {
-  if (status === 401 && hadToken && !path.startsWith('/auth/login')) {
+  if (status === 401 && hadToken && !path.startsWith('/auth/')) {
     await clearToken()
     unauthorizedHandler?.()
   }

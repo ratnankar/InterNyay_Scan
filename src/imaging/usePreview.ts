@@ -5,12 +5,17 @@ import { renderPage } from './render'
 const memo = new Map<string, string>()
 const MEMO_LIMIT = 60
 
-function keyOf(page: EditPage, edge: number) {
-  return `${page.id}:${page.rev}:${edge}`
+function keyOf(page: EditPage, edge: number, variant: string) {
+  return `${page.id}:${page.rev}:${edge}:${page.pageSize}:${variant}`
 }
 
-export function usePreview(page: EditPage | undefined, maxEdge: number, delay = 120): { uri: string | null; busy: boolean; error: boolean } {
-  const [uri, setUri] = useState<string | null>(page ? (memo.get(keyOf(page, maxEdge)) ?? null) : null)
+export type Preview = { uri: string | null; busy: boolean; error: boolean; rev: number | null }
+
+// `variant` separates previews of the same page that differ only by what the caller changed
+// locally (for example an editor's unsaved strokes).
+export function usePreview(page: EditPage | undefined, maxEdge: number, delay = 120, variant = ''): Preview {
+  const [uri, setUri] = useState<string | null>(page ? (memo.get(keyOf(page, maxEdge, variant)) ?? null) : null)
+  const [shownRev, setShownRev] = useState<number | null>(page && memo.has(keyOf(page, maxEdge, variant)) ? page.rev : null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
   const run = useRef(0)
@@ -20,10 +25,11 @@ export function usePreview(page: EditPage | undefined, maxEdge: number, delay = 
       setUri(null)
       return
     }
-    const key = keyOf(page, maxEdge)
+    const key = keyOf(page, maxEdge, variant)
     const cached = memo.get(key)
     if (cached) {
       setUri(cached)
+      setShownRev(page.rev)
       setBusy(false)
       return
     }
@@ -42,6 +48,7 @@ export function usePreview(page: EditPage | undefined, maxEdge: number, delay = 
         }
         if (run.current === token) {
           setUri(data)
+          setShownRev(page.rev)
           setBusy(false)
         }
       } catch {
@@ -52,9 +59,9 @@ export function usePreview(page: EditPage | undefined, maxEdge: number, delay = 
       }
     }, delay)
     return () => clearTimeout(timer)
-  }, [page, maxEdge, delay])
+  }, [page, maxEdge, delay, variant])
 
-  return { uri, busy, error }
+  return { uri, busy, error, rev: shownRev }
 }
 
 export function clearPreviewMemo() {

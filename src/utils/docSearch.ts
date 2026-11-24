@@ -22,3 +22,8 @@ export function matchesDoc(d: Doc, rawNeedle: string, mode: SearchIn, names: Nam
   }
   return d.name.toLowerCase().includes(needle) || (d.type ?? '').toLowerCase().includes(needle) || client.includes(needle) || caseTitle.includes(needle)
 }
+
+// Newest upload first. Falls back to the document date when there is no upload time.
+export function byNewest(a: Doc, b: Doc): number {
+  return (b.uploadedAt ?? b.date ?? '').localeCompare(a.uploadedAt ?? a.date ?? '')
+}

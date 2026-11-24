@@ -1,18 +1,8 @@
 import type { Quad } from './geometry'
-import type { FilterId } from './filters'
+import type { TextBox } from './marks'
+import type { PageParams, Rendered } from './types'
 
-export type PageParams = {
-  sourceUri: string
-  width: number
-  height: number
-  quad: Quad | null
-  rotation: 0 | 90 | 180 | 270
-  filter: FilterId
-  brightness: number
-  contrast: number
-}
-
-export type Rendered = { base64: string; width: number; height: number }
+export type { PageParams, Rendered } from './types'
 
 const UNSUPPORTED = 'Image editing is not available in the web build yet.'
 
@@ -21,6 +11,9 @@ export async function loadImage(_uri: string): Promise<never> {
 }
 export function forgetImage(_uri: string) {}
 export function clearImageCache() {}
+export function measureText(box: TextBox, contentW: number, _contentH: number): { width: number; height: number } {
+  return { width: box.w * Math.min(contentW, _contentH), height: box.size * Math.min(contentW, _contentH) * 1.3 }
+}
 export async function renderPage(_p: PageParams, _maxEdge: number, _q: number): Promise<Rendered> {
   throw new Error(UNSUPPORTED)
 }

@@ -58,8 +58,11 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="edit" options={{ gestureEnabled: false }} />
           <Stack.Screen name="crop" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
+          <Stack.Screen name="annotate" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
+          <Stack.Screen name="resize" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
           <Stack.Screen name="review" options={{ gestureEnabled: false }} />
           <Stack.Screen name="text" />
+          <Stack.Screen name="pdf" />
           <Stack.Screen name="folder" />
         </Stack.Protected>
         <Stack.Protected guard={status === 'signedOut'}>

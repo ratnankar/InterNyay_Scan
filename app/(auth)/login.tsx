@@ -1,21 +1,24 @@
-import { Feather } from '@expo/vector-icons'
+import { AntDesign, Feather } from '@expo/vector-icons'
 import { useRef, useState } from 'react'
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { AccountType } from '@/api/endpoints'
+import { getGoogleIdToken, googleAvailable } from '@/auth/google'
 import { Seal } from '@/components/Seal'
 import { Banner, Button, Field, Screen, Segmented } from '@/components/ui'
 import { useSession } from '@/store/session'
 import { warn } from '@/utils/haptics'
 import type { InputInstance } from '@/utils/refs'
-import { colors, space, type } from '@/theme'
+import { colors, fonts, radius, space, type } from '@/theme'
 
 export default function Login() {
   const signIn = useSession((s) => s.signIn)
+  const signInWithGoogle = useSession((s) => s.signInWithGoogle)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [account, setAccount] = useState<AccountType>('ADVOCATE')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [googleBusy, setGoogleBusy] = useState(false)
   const [show, setShow] = useState(false)
   const passwordRef = useRef<InputInstance>(null)
 
@@ -34,6 +37,22 @@ export default function Login() {
       warn()
       setError(e instanceof Error ? e.message : 'Sign in failed. Check your details and try again.')
       setBusy(false)
+    }
+  }
+
+  const google = async () => {
+    if (busy || googleBusy) return
+    setError(null)
+    setGoogleBusy(true)
+    try {
+      const idToken = await getGoogleIdToken()
+      if (idToken) await signInWithGoogle(idToken, account)
+    } catch (e) {
+      warn()
+      const message = e instanceof Error ? e.message : 'Google sign-in failed. Please try again.'
+      setError(message.replace(/ — open the Register tab to create one/, '. Create the account on the InterNyay website first.'))
+    } finally {
+      setGoogleBusy(false)
     }
   }
 
@@ -108,7 +127,29 @@ export default function Login() {
                 </Pressable>
               }
             />
-            <Button label="Sign in" onPress={() => void submit()} loading={busy} />
+            <Button label="Sign in" onPress={() => void submit()} loading={busy} disabled={googleBusy} />
+
+            {googleAvailable ? (
+              <>
+                <View style={styles.or}>
+                  <View style={styles.orLine} />
+                  <Text style={type.small}>or</Text>
+                  <View style={styles.orLine} />
+                </View>
+                <Pressable
+                  onPress={() => void google()}
+                  disabled={busy || googleBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Continue with Google as ${account === 'ADVOCATE' ? 'an advocate' : 'an associate'}`}
+                  accessibilityState={{ disabled: busy || googleBusy, busy: googleBusy }}
+                  style={({ pressed }) => [styles.google, (busy || googleBusy) && styles.googleOff, pressed && styles.googlePressed]}
+                >
+                  {googleBusy ? <ActivityIndicator color={colors.ink} /> : <AntDesign name="google" size={18} color={colors.ink} />}
+                  <Text style={styles.googleLabel}>Continue with Google</Text>
+                </Pressable>
+                <Text style={[type.caption, styles.googleHint]}>Use the Google account with the same email as your InterNyay account.</Text>
+              </>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -124,5 +165,22 @@ const styles = StyleSheet.create({
   tagline: { color: colors.inkSoft },
   segment: { gap: space.sm },
   form: { marginTop: space.xs },
+  or: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginVertical: space.lg },
+  orLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
+  google: {
+    minHeight: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.md,
+  },
+  googleOff: { opacity: 0.5 },
+  googlePressed: { opacity: 0.8 },
+  googleLabel: { fontFamily: fonts.sansSemi, fontSize: 15, color: colors.ink },
+  googleHint: { textAlign: 'center', marginTop: space.sm },
   eye: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
 })

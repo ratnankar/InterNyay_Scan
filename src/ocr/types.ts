@@ -2,6 +2,8 @@ export type OcrLanguage = 'auto' | 'en' | 'hi'
 
 export type OcrWord = { t: string; x: number; y: number; w: number; h: number }
 
+export type OcrLine = { text: string; x: number; y: number; w: number; h: number }
+
 export type OcrPage = { width: number; height: number; words: OcrWord[]; text: string }
 
 export type OcrPayload = {

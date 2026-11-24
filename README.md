@@ -30,6 +30,19 @@ EAS builds: `eas build --profile development --platform all`.
 - `src/upload/` local queue (SQLite), multipart upload with progress, retry, cleanup
 - `tests/` unit tests for geometry, edge detection and text structuring (`npm test`)
 
+## Page editor
+
+The edit screen has a scrolling tool row and a bottom bar.
+
+- Retake, Crop, Rotate, Filters, Adjust and Delete work on the current page.
+- Edit text adds, moves, recolours and resizes text boxes. Find text reads the page, lets you tap a printed line, erases it and puts the same words in an editable box.
+- Magic eraser fills painted areas with the surrounding paper colour. Cleanup wipes painted areas to white.
+- Markup draws with a pen or highlighter. Every brush screen has undo and Done; Cancel discards.
+- Resize places all pages on A3, A4, A5, US letter or US legal paper (portrait or landscape) with white margins, or keeps the scan size (Auto fit).
+- Keep scanning adds pages. Share builds a PDF and opens the share sheet. Save PDF goes to the Save to InterNyay screen; the arrow offers save to phone, share and preview.
+
+Strokes and text are stored per page in normalized coordinates (`src/imaging/marks.ts`) and drawn after crop, rotation and brightness/contrast, so they survive rotation but are cleared when a page is re-cropped. The web build shows a notice instead of the editors.
+
 ## Upload flow
 
 1. Pages are rendered at the chosen PDF quality and recognised on the device.

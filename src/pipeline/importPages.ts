@@ -63,6 +63,9 @@ async function normalize(uri: string, sessionId: string, autoCrop: boolean): Pro
     filter: 'auto',
     brightness: 0,
     contrast: 0,
+    pageSize: 'auto',
+    strokes: [],
+    texts: [],
     rev: 0,
   }
 }
@@ -76,13 +79,31 @@ function removeScannerTemp(uri: string) {
   }
 }
 
+// Fallback when the native scanner module fails: the phone's camera plus the app's own edge detection.
+async function captureWithCamera(sessionId: string): Promise<EditPage[]> {
+  const permission = await ImagePicker.requestCameraPermissionsAsync()
+  if (!permission.granted) throw new Error('Allow camera access for InterNyay Scan in your phone settings to scan documents.')
+  const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1, exif: false })
+  if (result.canceled) return []
+  const pages: EditPage[] = []
+  for (const asset of result.assets) {
+    pages.push(await normalize(asset.uri, sessionId, true))
+  }
+  return pages
+}
+
 export async function scanWithCamera(sessionId: string, max: number): Promise<EditPage[]> {
   if (max <= 0) return []
-  const response = await DocumentScanner.scanDocument({
-    maxNumDocuments: max,
-    croppedImageQuality: 100,
-    responseType: ResponseType.ImageFilePath,
-  })
+  let response
+  try {
+    response = await DocumentScanner.scanDocument({
+      maxNumDocuments: max,
+      croppedImageQuality: 100,
+      responseType: ResponseType.ImageFilePath,
+    })
+  } catch {
+    return captureWithCamera(sessionId)
+  }
   if (response.status !== ScanDocumentResponseStatus.Success || !response.scannedImages) return []
   const pages: EditPage[] = []
   for (const uri of response.scannedImages) {

@@ -1,6 +1,6 @@
 import TextRecognition, { TextRecognitionScript, type TextRecognitionResult } from '@react-native-ml-kit/text-recognition'
 import { blocksToText, devanagariRatio } from './structure'
-import type { OcrLanguage, OcrPage, OcrWord } from './types'
+import type { OcrLanguage, OcrLine, OcrPage, OcrWord } from './types'
 
 function toPage(result: TextRecognitionResult, width: number, height: number): OcrPage {
   const words: OcrWord[] = []
@@ -38,4 +38,25 @@ export function languageLabel(pages: OcrPage[], requested: OcrLanguage): string 
   if (requested !== 'auto') return requested
   const text = pages.map(p => p.text).join(' ')
   return devanagariRatio(text) >= 0.08 ? 'hi' : 'en'
+}
+
+function toLines(result: TextRecognitionResult): OcrLine[] {
+  const lines: OcrLine[] = []
+  for (const block of result.blocks) {
+    for (const line of block.lines) {
+      const f = line.frame
+      const text = line.text.trim()
+      if (!f || text.length === 0) continue
+      lines.push({ text, x: f.left, y: f.top, w: f.width, h: f.height })
+    }
+  }
+  return lines
+}
+
+export async function recognizeLines(uri: string, language: OcrLanguage): Promise<OcrLine[]> {
+  if (language === 'en') return toLines(await TextRecognition.recognize(uri, TextRecognitionScript.LATIN))
+  if (language === 'hi') return toLines(await TextRecognition.recognize(uri, TextRecognitionScript.DEVANAGARI))
+  const devanagari = await TextRecognition.recognize(uri, TextRecognitionScript.DEVANAGARI)
+  if (devanagariRatio(devanagari.text) >= 0.08) return toLines(devanagari)
+  return toLines(await TextRecognition.recognize(uri, TextRecognitionScript.LATIN))
 }

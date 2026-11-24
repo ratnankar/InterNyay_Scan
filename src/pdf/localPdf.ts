@@ -1,6 +1,8 @@
 import { Directory, File, Paths } from 'expo-file-system'
+import { router } from 'expo-router'
 import * as Print from 'expo-print'
 import * as Sharing from 'expo-sharing'
+import { Platform } from 'react-native'
 import { safeFileName } from '@/utils/format'
 
 type PageFile = { uri: string; width: number; height: number }
@@ -44,6 +46,10 @@ export async function sharePdf(file: File, title: string): Promise<void> {
 }
 
 export async function previewPdf(file: File): Promise<void> {
+  if (Platform.OS === 'android') {
+    router.push({ pathname: '/pdf', params: { uri: file.uri, name: file.name } })
+    return
+  }
   if (await File.canPreview(file)) {
     await file.preview()
     return

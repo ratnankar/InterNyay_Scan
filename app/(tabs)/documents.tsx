@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
-import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useAllDocuments } from '@/api/queries'
 import { useNameLookups } from '@/api/lookups'
 import type { Doc } from '@/api/types'
 import { DocActions } from '@/components/DocActions'
 import { DocRow } from '@/components/DocRow'
-import { Chip, EmptyState, Screen, SearchBar, SkeletonRows } from '@/components/ui'
-import { matchesDoc, searchPlaceholder, type SearchIn } from '@/utils/docSearch'
-import { space, type } from '@/theme'
+import { Chip, EmptyState, ListLabel, Screen, SearchBar, SkeletonRows } from '@/components/ui'
+import { byNewest, matchesDoc, searchPlaceholder, type SearchIn } from '@/utils/docSearch'
+import { PAGE_SIZE, usePaged } from '@/utils/usePaged'
+import { colors, space, type } from '@/theme'
 
 export default function Documents() {
   const documents = useAllDocuments()
@@ -22,9 +23,11 @@ export default function Documents() {
       (documents.data ?? []).filter((d) => {
         if (scansOnly && d.source !== 'MOBILE_SCAN') return false
         return matchesDoc(d, search, mode, { clientNames, caseTitles })
-      }),
+      })
+        .sort(byNewest),
     [documents.data, search, scansOnly, mode, clientNames, caseTitles],
   )
+  const paged = usePaged(items, `${search}|${mode.client}|${mode.case}|${scansOnly}`)
 
   const filtering = search.trim().length > 0 || mode.client || mode.case || scansOnly
   const clearFilters = () => {
@@ -36,9 +39,17 @@ export default function Documents() {
   return (
     <Screen>
       <FlatList
-        data={items}
+        data={paged.visible}
         keyExtractor={(d) => d.id}
         contentContainerStyle={styles.content}
+        onEndReached={() => {
+          if (paged.hasMore) paged.loadMore()
+        }}
+        onEndReachedThreshold={0.6}
+        initialNumToRender={PAGE_SIZE}
+        maxToRenderPerBatch={PAGE_SIZE}
+        windowSize={11}
+        ListFooterComponent={paged.hasMore ? <ActivityIndicator color={colors.bar} style={styles.more} /> : null}
         ListHeaderComponent={
           <View style={styles.header}>
             <Text style={type.title} accessibilityRole="header">
@@ -46,10 +57,13 @@ export default function Documents() {
             </Text>
             <SearchBar value={search} onChangeText={setSearch} placeholder={searchPlaceholder(mode)} />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-              <Chip icon="user" label="Client" active={mode.client} onPress={() => setMode((m) => ({ ...m, client: !m.client }))} />
-              <Chip icon="briefcase" label="Case" active={mode.case} onPress={() => setMode((m) => ({ ...m, case: !m.case }))} />
+              <Chip icon="user" label="Client" active={mode.client} onPress={() => setMode((m) => ({ client: !m.client, case: false }))} />
+              <Chip icon="briefcase" label="Case" active={mode.case} onPress={() => setMode((m) => ({ client: false, case: !m.case }))} />
               <Chip label="Scanned with this app" icon="camera" active={scansOnly} onPress={() => setScansOnly((v) => !v)} />
             </ScrollView>
+            {items.length > 0 ? (
+              <ListLabel title={filtering ? (items.length === 1 ? 'Result' : 'Results') : 'Recently uploaded'} shown={paged.visible.length} total={items.length} />
+            ) : null}
           </View>
         }
         renderItem={({ item }) => <DocRow doc={item} context={describe(item.clientId, item.caseId)} onPress={() => setSelected(item)} />}
@@ -82,4 +96,5 @@ const styles = StyleSheet.create({
   content: { padding: space.lg, paddingBottom: space.xxl * 2 },
   header: { gap: space.md, marginBottom: space.md },
   chips: { flexDirection: 'row', gap: space.sm },
+  more: { paddingVertical: space.lg },
 })

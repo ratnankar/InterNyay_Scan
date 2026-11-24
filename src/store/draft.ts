@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { File } from 'expo-file-system'
 import { clearImageCache, forgetImage } from '@/imaging/render'
 import { deleteDraftDir } from '@/pipeline/importPages'
+import { turnStrokes, turnTexts } from '@/imaging/marks'
 import type { EditPage } from '@/pipeline/types'
 import type { OcrLanguage, OcrPage } from '@/ocr/types'
 import type { QualityId } from '@/constants'
@@ -38,6 +39,7 @@ type DraftState = {
   replacePage: (id: string, page: EditPage) => void
   updatePage: (id: string, patch: Partial<EditPage>) => void
   applyToAll: (patch: Partial<EditPage>) => void
+  rotatePage: (id: string) => void
   removePage: (id: string) => void
   movePage: (id: string, direction: -1 | 1) => void
   select: (id: string) => void
@@ -93,7 +95,27 @@ export const useDraft = create<DraftState>((set, get) => ({
     }),
   updatePage: (id, patch) =>
     set((s) => ({
-      pages: s.pages.map((p) => (p.id === id ? { ...p, ...patch, rev: p.rev + 1 } : p)),
+      pages: s.pages.map((p) => {
+        if (p.id !== id) return p
+        // Marks are positioned on the cropped page, so a new crop invalidates them.
+        const recropped = 'quad' in patch ? { strokes: [], texts: [] } : null
+        return { ...p, ...recropped, ...patch, rev: p.rev + 1 }
+      }),
+      prepared: null,
+    })),
+  rotatePage: (id) =>
+    set((s) => ({
+      pages: s.pages.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              rotation: ((p.rotation + 90) % 360) as EditPage['rotation'],
+              strokes: turnStrokes(p.strokes),
+              texts: turnTexts(p.texts),
+              rev: p.rev + 1,
+            }
+          : p,
+      ),
       prepared: null,
     })),
   applyToAll: (patch) =>

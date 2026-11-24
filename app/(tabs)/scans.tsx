@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons'
 import { useMemo, useState } from 'react'
-import { Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useNameLookups } from '@/api/lookups'
 import { useAllDocuments } from '@/api/queries'
 import type { Doc } from '@/api/types'
@@ -8,14 +8,15 @@ import { ALL_CATEGORIES } from '@/constants'
 import { DocActions } from '@/components/DocActions'
 import { DocRow } from '@/components/DocRow'
 import { PickerSheet } from '@/components/Sheet'
-import { Banner, Button, Card, Chip, EmptyState, Pill, ProgressBar, Screen, SearchBar, SkeletonRows } from '@/components/ui'
+import { Banner, Button, Card, Chip, EmptyState, ListLabel, Pill, ProgressBar, Screen, SearchBar, SkeletonRows } from '@/components/ui'
 import { colors, space, type } from '@/theme'
 import { discardPending, type ScanRow } from '@/upload/pending'
 import { useUploadProgress } from '@/upload/progress'
 import { runUpload } from '@/upload/run'
 import { usePendingRows } from '@/upload/usePending'
-import { matchesDoc, searchPlaceholder, type SearchIn } from '@/utils/docSearch'
+import { byNewest, matchesDoc, searchPlaceholder, type SearchIn } from '@/utils/docSearch'
 import { formatDateTime, isoDate } from '@/utils/format'
+import { PAGE_SIZE, usePaged } from '@/utils/usePaged'
 
 type Range = 'any' | 'today' | 'week' | 'month'
 type Sheetname = 'category' | 'date' | null
@@ -58,9 +59,11 @@ export default function MyScans() {
         if (dates.from && (!d.date || d.date < dates.from)) return false
         if (dates.to && (!d.date || d.date > dates.to)) return false
         return matchesDoc(d, search, mode, { clientNames, caseTitles })
-      }),
+      })
+        .sort(byNewest),
     [documents.data, search, mode, category, dates.from, dates.to, clientNames, caseTitles],
   )
+  const paged = usePaged(items, `${search}|${mode.client}|${mode.case}|${category}|${range}`)
 
   const retry = async (row: ScanRow) => {
     try {
@@ -100,8 +103,8 @@ export default function MyScans() {
       </Text>
       <SearchBar value={search} onChangeText={setSearch} placeholder={searchPlaceholder(mode)} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        <Chip icon="user" label="Client" active={mode.client} onPress={() => setMode((m) => ({ ...m, client: !m.client }))} />
-        <Chip icon="briefcase" label="Case" active={mode.case} onPress={() => setMode((m) => ({ ...m, case: !m.case }))} />
+        <Chip icon="user" label="Client" active={mode.client} onPress={() => setMode((m) => ({ client: !m.client, case: false }))} />
+        <Chip icon="briefcase" label="Case" active={mode.case} onPress={() => setMode((m) => ({ client: false, case: !m.case }))} />
         <Chip icon="tag" label={category ?? 'Category'} active={category !== null} onPress={() => setSheet('category')} onClear={() => setCategory(null)} />
         <Chip icon="calendar" label={dateLabel} active={range !== 'any'} onPress={() => setSheet('date')} onClear={() => setRange('any')} />
       </ScrollView>
@@ -142,9 +145,13 @@ export default function MyScans() {
       ) : null}
 
       {items.length > 0 ? (
-        <Text style={[type.heading, styles.listTitle]}>
-          {filtering ? `${items.length} ${items.length === 1 ? 'result' : 'results'}` : 'Uploaded scans'}
-        </Text>
+        <View style={styles.listTitle}>
+          <ListLabel
+            title={filtering ? `${items.length === 1 ? 'Result' : 'Results'}` : 'Recently uploaded'}
+            shown={paged.visible.length}
+            total={items.length}
+          />
+        </View>
       ) : null}
     </View>
   )
@@ -152,10 +159,18 @@ export default function MyScans() {
   return (
     <Screen>
       <FlatList
-        data={items}
+        data={paged.visible}
         keyExtractor={(d) => d.id}
         contentContainerStyle={styles.content}
         ListHeaderComponent={header}
+        onEndReached={() => {
+          if (paged.hasMore) paged.loadMore()
+        }}
+        onEndReachedThreshold={0.6}
+        initialNumToRender={PAGE_SIZE}
+        maxToRenderPerBatch={PAGE_SIZE}
+        windowSize={11}
+        ListFooterComponent={paged.hasMore ? <ActivityIndicator color={colors.bar} style={styles.more} /> : null}
         renderItem={({ item }) => <DocRow doc={item} context={describe(item.clientId, item.caseId)} onPress={() => setSelected(item)} />}
         ListEmptyComponent={
           documents.isLoading ? (
@@ -223,6 +238,7 @@ const styles = StyleSheet.create({
   pendingActions: { flexDirection: 'row', gap: space.sm },
   flex: { flex: 1 },
   error: { fontSize: 13, color: colors.seal },
+  more: { paddingVertical: space.lg },
   listTitle: { marginTop: space.sm, marginBottom: space.sm },
   centered: { textAlign: 'center', paddingVertical: space.xl },
 })

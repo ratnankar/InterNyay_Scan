@@ -6,6 +6,8 @@ export type AccountType = 'ADVOCATE' | 'ASSOCIATE'
 export const authApi = {
   login: (email: string, password: string, accountType: AccountType) =>
     request<LoginResponse>('POST', '/auth/login', { body: { email, password, accountType } }),
+  google: (idToken: string, accountType: AccountType) =>
+    request<LoginResponse>('POST', '/auth/google/login', { body: { idToken, accountType } }),
 }
 
 export const clientsApi = {

@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons'
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import Slider from '@react-native-community/slider'
 import { router } from 'expo-router'
 import { useEffect, useState, type ComponentProps } from 'react'
@@ -7,14 +7,27 @@ import { ActionSheet, type ActionItem } from '@/components/Sheet'
 import { Button, Chip, Header, Screen } from '@/components/ui'
 import { FILTERS } from '@/imaging/filters'
 import { usePreview } from '@/imaging/usePreview'
+import { exportDraftPdf } from '@/pdf/exportDraft'
+import { previewPdf, sharePdf } from '@/pdf/localPdf'
 import { scanWithCamera } from '@/pipeline/importPages'
 import type { EditPage } from '@/pipeline/types'
 import { collectPages } from '@/pipeline/useScanFlow'
 import { useDraft } from '@/store/draft'
+import { useSettings } from '@/store/settings'
 import { colors, fonts, hit, radius, space, type } from '@/theme'
 import { tap } from '@/utils/haptics'
 
-type IconName = ComponentProps<typeof Feather>['name']
+type FeatherName = ComponentProps<typeof Feather>['name']
+type CommunityName = ComponentProps<typeof MaterialCommunityIcons>['name']
+type ToolIcon = { set: 'feather'; name: FeatherName } | { set: 'community'; name: CommunityName }
+type Panel = 'filters' | 'adjust' | null
+
+const SAVE_ACTIONS: ActionItem[] = [
+  { id: 'upload', label: 'Save to InterNyay', icon: 'upload-cloud' },
+  { id: 'phone', label: 'Save PDF to this phone', icon: 'download' },
+  { id: 'share', label: 'Share PDF', icon: 'share-2' },
+  { id: 'preview', label: 'Preview PDF', icon: 'eye' },
+]
 
 const ADD_ACTIONS: ActionItem[] = [
   { id: 'camera', label: 'Scan with camera', icon: 'camera' },
@@ -34,7 +47,7 @@ function Thumb({ page, index, selected, onPress }: { page: EditPage; index: numb
   )
 }
 
-function Tool({ icon, label, onPress, active, danger }: { icon: IconName; label: string; onPress: () => void; active?: boolean; danger?: boolean }) {
+function Tool({ icon, label, onPress, active, danger }: { icon: ToolIcon; label: string; onPress: () => void; active?: boolean; danger?: boolean}) {
   const color = danger ? colors.seal : active ? colors.bar : colors.ink
   return (
     <Pressable
@@ -47,8 +60,10 @@ function Tool({ icon, label, onPress, active, danger }: { icon: IconName; label:
       accessibilityLabel={label}
       accessibilityState={{ selected: !!active }}
     >
-      <Feather name={icon} size={22} color={color} />
-      <Text style={[styles.toolLabel, { color }]}>{label}</Text>
+      {icon.set === 'feather' ? <Feather name={icon.name} size={22} color={color} /> : <MaterialCommunityIcons name={icon.name} size={24} color={color} />}
+      <Text style={[styles.toolLabel, { color }]} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   )
 }
@@ -57,15 +72,18 @@ export default function Edit() {
   const pages = useDraft((s) => s.pages)
   const selectedId = useDraft((s) => s.selectedId)
   const sessionId = useDraft((s) => s.sessionId)
-  const { select, updatePage, applyToAll, removePage, movePage, replacePage, addPages, reset } = useDraft.getState()
+  const { select, updatePage, applyToAll, rotatePage, removePage, movePage, replacePage, addPages, reset } = useDraft.getState()
+  const quality = useSettings((s) => s.quality)
+  const name = useDraft((s) => s.name)
 
   const page = pages.find((p) => p.id === selectedId) ?? pages[0]
   const index = page ? pages.findIndex((p) => p.id === page.id) : -1
   const preview = usePreview(page, 1400, 60)
-  const [adjust, setAdjust] = useState(false)
+  const [panel, setPanel] = useState<Panel>('filters')
   const [applyAll, setApplyAll] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [saveOpen, setSaveOpen] = useState(false)
   const [sliding, setSliding] = useState<{ b: number; c: number } | null>(null)
 
   useEffect(() => {
@@ -135,16 +153,48 @@ export default function Edit() {
     }
   }
 
+  const hasMarks = page.strokes.length > 0 || page.texts.length > 0
+
+  const crop = () => {
+    const open = () => router.push({ pathname: '/crop', params: { id: page.id } })
+    if (!hasMarks) {
+      open()
+      return
+    }
+    Alert.alert('Crop this page?', 'Cropping again removes the markup, erasing and text you added to this page.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Continue', onPress: open },
+    ])
+  }
+
+  const annotate = (mode: 'markup' | 'magic' | 'cleanup' | 'text') => router.push({ pathname: '/annotate', params: { id: page.id, mode } })
+
+  const pdf = async (action: 'phone' | 'share' | 'preview') => {
+    setBusy(true)
+    try {
+      const file = await exportDraftPdf(sessionId, useDraft.getState().pages, name, quality)
+      if (action === 'preview') await previewPdf(file)
+      else await sharePdf(file, name)
+    } catch (e) {
+      Alert.alert('PDF failed', e instanceof Error ? e.message : 'Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveAction = (id: string) => {
+    if (id === 'upload') router.push('/review')
+    else void pdf(id as 'phone' | 'share' | 'preview')
+  }
+
+  const toggle = (next: Exclude<Panel, null>) => setPanel((cur) => (cur === next ? null : next))
+
   const brightness = sliding?.b ?? page.brightness
   const contrast = sliding?.c ?? page.contrast
 
   return (
     <Screen edges={['top', 'bottom']}>
-      <Header
-        title={`Page ${index + 1} of ${pages.length}`}
-        onBack={discard}
-        right={<Button label="Next" icon="arrow-right" onPress={() => router.push('/review')} style={styles.next} />}
-      />
+      <Header title={`Page ${index + 1} of ${pages.length}`} onBack={discard} />
 
       <View style={styles.stage}>
         {preview.uri ? <Image source={{ uri: preview.uri }} style={styles.preview} resizeMode="contain" /> : null}
@@ -156,13 +206,15 @@ export default function Edit() {
         {preview.error ? <Text style={[type.small, styles.previewError]}>This page could not be processed.</Text> : null}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-        {FILTERS.map((f) => (
-          <Chip key={f.id} label={f.label} active={page.filter === f.id} onPress={() => patch({ filter: f.id })} />
-        ))}
-      </ScrollView>
+      {panel === 'filters' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filters}>
+          {FILTERS.map((f) => (
+            <Chip key={f.id} label={f.label} active={page.filter === f.id} onPress={() => patch({ filter: f.id })} />
+          ))}
+        </ScrollView>
+      ) : null}
 
-      {adjust ? (
+      {panel === 'adjust' ? (
         <View style={styles.adjust}>
           <View style={styles.sliderRow}>
             <Feather name="sun" size={18} color={colors.inkSoft} />
@@ -216,14 +268,19 @@ export default function Edit() {
         </View>
       ) : null}
 
-      <View style={styles.tools}>
-        <Tool icon="plus-square" label="Add" onPress={() => setAddOpen(true)} />
-        <Tool icon="refresh-ccw" label="Retake" onPress={() => void retake()} />
-        <Tool icon="crop" label="Crop" onPress={() => router.push({ pathname: '/crop', params: { id: page.id } })} />
-        <Tool icon="rotate-cw" label="Rotate" onPress={() => updatePage(page.id, { rotation: ((page.rotation + 90) % 360) as EditPage['rotation'] })} />
-        <Tool icon="sliders" label="Adjust" active={adjust} onPress={() => setAdjust((v) => !v)} />
-        <Tool icon="trash-2" label="Delete" danger onPress={remove} />
-      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.toolScroll} contentContainerStyle={styles.tools}>
+        <Tool icon={{ set: 'feather', name: 'refresh-ccw' }} label="Retake" onPress={() => void retake()} />
+        <Tool icon={{ set: 'feather', name: 'crop' }} label="Crop" onPress={crop} />
+        <Tool icon={{ set: 'feather', name: 'rotate-cw' }} label="Rotate" onPress={() => rotatePage(page.id)} />
+        <Tool icon={{ set: 'feather', name: 'type' }} label="Edit text" onPress={() => annotate('text')} />
+        <Tool icon={{ set: 'feather', name: 'droplet' }} label="Filters" active={panel === 'filters'} onPress={() => toggle('filters')} />
+        <Tool icon={{ set: 'community', name: 'auto-fix' }} label="Magic eraser" onPress={() => annotate('magic')} />
+        <Tool icon={{ set: 'feather', name: 'sliders' }} label="Adjust" active={panel === 'adjust'} onPress={() => toggle('adjust')} />
+        <Tool icon={{ set: 'feather', name: 'pen-tool' }} label="Markup" onPress={() => annotate('markup')} />
+        <Tool icon={{ set: 'community', name: 'eraser' }} label="Cleanup" onPress={() => annotate('cleanup')} />
+        <Tool icon={{ set: 'feather', name: 'maximize-2' }} label="Resize" onPress={() => router.push({ pathname: '/resize', params: { id: page.id } })} />
+        <Tool icon={{ set: 'feather', name: 'trash-2' }} label="Delete" danger onPress={remove} />
+      </ScrollView>
 
       <View style={styles.stripRow}>
         <FlatList
@@ -244,6 +301,49 @@ export default function Edit() {
         </View>
       </View>
 
+      <View style={styles.bottom}>
+        <Pressable
+          onPress={() => setAddOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Keep scanning"
+          style={({ pressed }) => [styles.keep, pressed && styles.toolPressed]}
+        >
+          <Text style={styles.keepText}>Keep scanning</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => void pdf('share')}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel="Share PDF"
+          style={({ pressed }) => [styles.shareBtn, pressed && styles.toolPressed]}
+        >
+          <Feather name="share-2" size={22} color={colors.ink} />
+        </Pressable>
+        <View style={styles.save}>
+          <Pressable
+            onPress={() => {
+              tap()
+              router.push('/review')
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Save PDF"
+            style={({ pressed }) => [styles.saveMain, pressed && styles.toolPressed]}
+          >
+            <Text style={styles.saveText}>Save PDF</Text>
+          </Pressable>
+          <View style={styles.saveDivider} />
+          <Pressable
+            onPress={() => setSaveOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="More save options"
+            style={({ pressed }) => [styles.saveMore, pressed && styles.toolPressed]}
+          >
+            <Feather name="chevron-up" size={22} color={colors.white} />
+          </Pressable>
+        </View>
+      </View>
+
+      <ActionSheet visible={saveOpen} title="Save or share" actions={SAVE_ACTIONS} onSelect={saveAction} onClose={() => setSaveOpen(false)} />
       <ActionSheet visible={addOpen} title="Add pages" actions={ADD_ACTIONS} onSelect={(id) => void add(id)} onClose={() => setAddOpen(false)} />
     </Screen>
   )
@@ -254,20 +354,30 @@ const styles = StyleSheet.create({
   preview: { flex: 1 },
   busy: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(244,246,248,0.45)' },
   previewError: { position: 'absolute', alignSelf: 'center', top: '45%' },
+  filterScroll: { flexGrow: 0, flexShrink: 0 },
   filters: { gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.md },
   adjust: { paddingHorizontal: space.lg, gap: space.xs },
   flex: { flex: 1 },
-  next: { minHeight: 40, paddingHorizontal: space.md },
   sliderRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   sliderName: { width: 72, fontFamily: fonts.sansMedium, fontSize: 13, color: colors.inkSoft },
   sliderValue: { width: 34, textAlign: 'right', fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink },
   slider: { flex: 1, height: 36 },
   applyAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tools: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  tool: { alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: 52, minHeight: hit + 8, borderRadius: radius.md, paddingHorizontal: 6 },
+  toolScroll: { flexGrow: 0, flexShrink: 0, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  tools: { gap: space.xs, paddingHorizontal: space.sm, paddingVertical: space.sm },
+  tool: { alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: 68, minHeight: hit + 8, borderRadius: radius.md, paddingHorizontal: 6 },
+  bottom: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingBottom: space.md, paddingTop: space.xs },
+  keep: { flex: 1, minHeight: 50, borderRadius: radius.pill, borderWidth: 2, borderColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  keepText: { fontFamily: fonts.sansSemi, fontSize: 15, color: colors.ink },
+  shareBtn: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, borderColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  save: { flex: 1.3, minHeight: 50, borderRadius: radius.pill, backgroundColor: colors.bar, flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
+  saveMain: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center' },
+  saveText: { fontFamily: fonts.sansSemi, fontSize: 15, color: colors.white },
+  saveDivider: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: colors.onBar },
+  saveMore: { width: 46, minHeight: 50, alignItems: 'center', justifyContent: 'center' },
   toolActive: { backgroundColor: colors.barTint },
   toolPressed: { opacity: 0.6 },
-  toolLabel: { fontFamily: fonts.sansMedium, fontSize: 11 },
+  toolLabel: { fontFamily: fonts.sansMedium, fontSize: 11, maxWidth: 76 },
   stripRow: { flexDirection: 'row', alignItems: 'center', paddingBottom: space.sm },
   strip: { gap: space.sm, paddingHorizontal: space.lg },
   move: { flexDirection: 'row', paddingRight: space.sm },
